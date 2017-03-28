@@ -451,13 +451,18 @@ public class QuickbaseTableDump {
                 System.err.println("found "+response.getRecords().size()+" records in record id range ["+from+","+to+")");
             }
             
+            long timeBeforeRegex = new Date().getTime();
             if ("".equals(combinedResponse)) {
-                combinedResponse += response.responseString.replaceAll("(?s)(<records[^>]*>[^<]*).*", "$1");
+                combinedResponse += response.responseString.replaceAll("(?s)(<records[^>]*>[^<]*).*$", "$1");
             }
-            combinedResponse += response.responseString.replaceAll("(?s).*<records[^>]*>[^<]*", "").replaceAll("(?s)</records.*", "");
+            combinedResponse += response.responseString.replaceAll("(?s)^.*<records[^>]*>[^<]*", "").replaceAll("(?s)</records.*", "");
+            long timeAfterRegex = new Date().getTime();
+            if (DEBUG) {
+            	System.err.println("regex duration in ms: "+(timeAfterRegex-timeBeforeRegex));
+            }
         }
         if (!"".equals(combinedResponse)) {
-            combinedResponse += response.responseString.replaceAll("(?s).*(</records)", "$1");
+            combinedResponse += response.responseString.replaceAll("(?s)^.*(</records)", "$1");
         }
         
         if (DEBUG) {
