@@ -1,9 +1,15 @@
 package no.nlb.quickbase.dump;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
 import java.util.Map;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHeaders;
@@ -14,11 +20,20 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
+import org.w3c.dom.DOMException;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+import org.xml.sax.SAXException;
 
 /**
  * Dumps a table from Quickbase to a XML file
  */
 public class QuickbaseTableDump {
+    
+    private static final int MAX_ROWS_PER_REQUEST = 100;
+    private static final String ENCODING = "iso-8859-1";
     
     public static class QuickbaseClient {
         private HttpClient client;
@@ -45,6 +60,7 @@ public class QuickbaseTableDump {
         public QuickbaseRequest newRequest(String action) {
             QuickbaseRequest request = new QuickbaseRequest(client, url, action);
             
+            request.setParameter("encoding", ENCODING);
             request.setParameter("apptoken", apptoken);
             if (ticket != null) {
                 request.setParameter("ticket", ticket);
@@ -77,7 +93,7 @@ public class QuickbaseTableDump {
             postString += "</qdbapi>";
             byte[] postBytes = null;
             try {
-                postBytes = postString.getBytes("UTF-8");
+                postBytes = postString.getBytes(ENCODING);
             } catch (UnsupportedEncodingException e) {
                 e.printStackTrace();
                 System.exit(1);
@@ -99,12 +115,31 @@ public class QuickbaseTableDump {
             }
             
             try {
-                return new QuickbaseResponse(EntityUtils.toString(response.getEntity()));
+                HttpEntity entity = response.getEntity();
+                return new QuickbaseResponse(removeControlCharacters(EntityUtils.toString(entity,ENCODING)));
             } catch (IOException|ParseException e) {
                 e.printStackTrace();
                 System.exit(1);
             }
             return null;
+        }
+        
+        public static String removeControlCharacters(String value) {
+            String newValue = "";
+            final int length = value.length();
+            for (int offset = 0; offset < length; ) {
+               final int codepoint = value.codePointAt(offset);
+               if (codepoint <= 8 ||
+                   codepoint >= 14 && codepoint <= 31 ||
+                   codepoint >= 128 && codepoint <= 132 ||
+                   codepoint >= 134 && codepoint <= 159) {
+                   //System.err.println("removing codepoint: "+codepoint);
+               } else {
+                   newValue += value.charAt(offset);
+               }
+               offset += Character.charCount(codepoint);
+            }
+            return newValue;
         }
         
         public void setParameter(String key, String value) {
@@ -114,6 +149,7 @@ public class QuickbaseTableDump {
     
     private static class QuickbaseResponse {
         public String responseString = null;
+        private Document xml = null;
         private Map<String,String> results = null;
         
         public QuickbaseResponse(String responseString) {
@@ -141,9 +177,125 @@ public class QuickbaseTableDump {
             }
         }
         
+        public Document xml() {
+            if (xml != null) return xml;
+            
+            try {
+                DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
+                DocumentBuilder documentBuilder = documentBuilderFactory.newDocumentBuilder();
+                InputStream stream = new ByteArrayInputStream(responseString.getBytes(ENCODING));
+                xml = documentBuilder.parse(stream);
+                
+            } catch (ParserConfigurationException | SAXException | IOException e) {
+                e.printStackTrace();
+                System.exit(1);
+            }
+            
+            return xml;
+        }
+        
         public String get(String key) {
             parseResults();
             return results.get(key);
+        }
+        
+        public Map<String,Map<String,String>> getFields() {
+            Map<String,Map<String,String>> fields = new HashMap<String,Map<String,String>>();
+            NodeList fieldElements = xml().getElementsByTagName("field");
+            for (int i = 0; i < fieldElements.getLength(); i++) {
+                Element fieldElement = (Element)fieldElements.item(i);
+                
+                Map<String,String> fieldValues = new HashMap<String,String>();
+                
+                NodeList fieldChildNodes = fieldElement.getChildNodes();
+                for (int j = 0; j < fieldChildNodes.getLength(); j++) { // iterate elements inside field element
+                    Node fieldChildNode = fieldChildNodes.item(j);
+                    if (fieldChildNode.getNodeType() == Node.ELEMENT_NODE) {
+                        String name = fieldChildNode.getNodeName();
+                        String value = null;
+                        NodeList childNodes = fieldChildNode.getChildNodes();
+                        for (int k = 0; k < childNodes.getLength(); k++) { // iterate nodes inside field value element to check for content
+                            Node childNode = childNodes.item(k);
+                            if (childNode.getNodeType() == Node.ELEMENT_NODE) {
+                                // ignore elements with complex content
+                                value = null;
+                                break;
+                            }
+                            if (childNode.getNodeType() == Node.TEXT_NODE) {
+                                value = childNode.getNodeValue();
+                            }
+                        }
+                        if (value != null) {
+                            fieldValues.put(name, value);
+                        }
+                    }
+                }
+                
+                fieldValues.put("base_type", fieldElement.getAttribute("base_type"));
+                fieldValues.put("field_type", fieldElement.getAttribute("field_type"));
+                fieldValues.put("mode", fieldElement.getAttribute("mode"));
+                fieldValues.put("role", fieldElement.getAttribute("role"));
+                
+                fields.put(fieldElement.getAttribute("id"), fieldValues);
+            }
+            return fields;
+        }
+        
+        public String getRecordIdId() {
+            Map<String,Map<String,String>> fields = getFields();
+            for (String id : fields.keySet()) {
+                if ("recordid".equals(fields.get(id).get("role"))) {
+                    return id;
+                }
+            }
+            return null;
+        }
+
+        public Map<String,Map<String,String>> getRecords() {
+            Map<String,Map<String,String>> records = new HashMap<String,Map<String,String>>();
+            NodeList recordElements = xml().getElementsByTagName("record");
+            for (int i = 0; i < recordElements.getLength(); i++) {
+                Element recordElement = (Element)recordElements.item(i);
+                
+                Map<String,String> recordValues = new HashMap<String,String>();
+                
+                NodeList recordChildNodes = recordElement.getChildNodes();
+                for (int j = 0; j < recordChildNodes.getLength(); j++) { // iterate elements inside record element
+                    Node recordChildNode = recordChildNodes.item(j);
+                    if (recordChildNode.getNodeType() == Node.ELEMENT_NODE) {
+                        String name = recordChildNode.getNodeName();
+                        if ("f".equals(name)) {
+                            name = ((Element)recordChildNode).getAttribute("id");
+                        }
+                        String value = null;
+                        NodeList childNodes = recordChildNode.getChildNodes();
+                        for (int k = 0; k < childNodes.getLength(); k++) { // iterate nodes inside record value element to check for content
+                            Node childNode = childNodes.item(k);
+                            if (childNode.getNodeType() == Node.ELEMENT_NODE) {
+                                // ignore elements with complex content
+                                value = null;
+                                break;
+                            }
+                            if (childNode.getNodeType() == Node.TEXT_NODE) {
+                                try {
+                                    //value = URLEncoder.encode(childNode.getNodeValue(), ENCODING);
+                                    value = childNode.getNodeValue();
+                                    
+                                } catch (DOMException e) {
+                                    e.printStackTrace();
+                                    System.exit(1);
+                                }
+                            }
+                        }
+                        if (value != null) {
+                            recordValues.put(name, value);
+                        }
+                    }
+                }
+                
+                records.put(recordElement.getAttribute("rid"), recordValues);
+            }
+            return records;
         }
     }
     
@@ -177,19 +329,74 @@ public class QuickbaseTableDump {
         
         QuickbaseClient client = new QuickbaseClient(appToken, domain, table, username, password);
         QuickbaseRequest request;
-        QuickbaseResponse response;
+        QuickbaseResponse response, schema;
+        Map<String, Map<String, String>> records;
+        String combinedResponse = "";
         
-        //request = client.newRequest("API_GetSchema");
-        //response = request.send();
-        //System.out.println(response.responseString);
+        // find id of row containing record id
+        request = client.newRequest("API_GetSchema");
+        schema = request.send();
+        String recordIdId = schema.getRecordIdId();
         
+        // find lowest record id
         request = client.newRequest("API_DoQuery");
         request.setParameter("query", "");
-        request.setParameter("clist", "a");
+        request.setParameter("clist", recordIdId);
+        request.setParameter("slist", recordIdId);
+        request.setParameter("options", "sortorder-A.num-1");
         request.setParameter("includeRids", "1");
         request.setParameter("fmt", "structured");
         response = request.send();
-        System.out.println(response.responseString);
+        records = response.getRecords();
+        Integer startRecordId = null;
+        for (String recordId : records.keySet()) {
+            startRecordId = new Integer(recordId);
+            assert(startRecordId != null);
+        }
+        //System.err.println("startRecordId: "+startRecordId);
         
+        // find highest record id
+        request = client.newRequest("API_DoQuery");
+        request.setParameter("query", "");
+        request.setParameter("clist", recordIdId);
+        request.setParameter("slist", recordIdId);
+        request.setParameter("options", "sortorder-D.num-1");
+        request.setParameter("includeRids", "1");
+        request.setParameter("fmt", "structured");
+        response = request.send();
+        records = response.getRecords();
+        Integer endRecordId = null;
+        for (String recordId : records.keySet()) {
+            endRecordId = new Integer(recordId);
+            assert(endRecordId != null);
+        }
+        //System.err.println("endRecordId: "+endRecordId);
+        
+        for (int page = 0; startRecordId + page * MAX_ROWS_PER_REQUEST <= endRecordId; page++) {
+            int from = startRecordId + page * MAX_ROWS_PER_REQUEST;
+            int to = startRecordId + (page+1) * MAX_ROWS_PER_REQUEST;
+            
+            request = client.newRequest("API_DoQuery");
+            request.setParameter("query", "{'"+recordIdId+"'.GTE.'"+from+"'}AND{'"+recordIdId+"'.LT.'"+to+"'}");
+            request.setParameter("clist", "a");
+            request.setParameter("slist", recordIdId);
+            request.setParameter("includeRids", "1");
+            request.setParameter("fmt", "structured");
+            response = request.send();
+            //System.err.println("found "+response.getRecords().size()+" records in record id range ["+from+","+to+")");
+            
+            if ("".equals(combinedResponse)) {
+                combinedResponse += response.responseString.replaceAll("(?s)(<records[^>]*>[^<]*).*", "$1");
+            }
+            combinedResponse += response.responseString.replaceAll("(?s).*<records[^>]*>[^<]*", "").replaceAll("(?s)</records.*", "");
+        }
+        if (!"".equals(combinedResponse)) {
+            combinedResponse += response.responseString.replaceAll("(?s).*(</records)", "$1");
+        }
+        
+        //response = new QuickbaseResponse(combinedResponse);
+        //System.err.println("Found a total of "+response.getRecords().size()+" records");
+        
+        System.out.println(combinedResponse);
     }
 }
