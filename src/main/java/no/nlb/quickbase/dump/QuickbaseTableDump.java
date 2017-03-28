@@ -4,6 +4,7 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -108,7 +109,15 @@ public class QuickbaseTableDump {
             
             HttpResponse response = null;
             try {
+                long timeBefore = new Date().getTime();
+                if (DEBUG) {
+                    System.err.println("Sending HTTP request...");
+                }
                 response = client.execute(post);
+                if (DEBUG) {
+                    long timeAfter = new Date().getTime();
+                    System.err.println("HTTP request duration in ms: "+(timeAfter - timeBefore));
+                }
                 
             } catch (IOException|ParseException e) {
                 e.printStackTrace();
@@ -126,6 +135,9 @@ public class QuickbaseTableDump {
         }
         
         public static String removeControlCharacters(String value) {
+            if (DEBUG) {
+                System.err.println("Removing control characters...");
+            }
             String newValue = "";
             final int length = value.length();
             for (int offset = 0; offset < length; ) {
@@ -134,13 +146,16 @@ public class QuickbaseTableDump {
                    codepoint >= 14 && codepoint <= 31 ||
                    codepoint >= 128 && codepoint <= 132 ||
                    codepoint >= 134 && codepoint <= 159) {
-            	   if (DEBUG) {
-            		   System.err.println("removing codepoint: "+codepoint);
-            	   }
+                   if (DEBUG) {
+                       System.err.println("removing codepoint: "+codepoint);
+                   }
                } else {
                    newValue += value.charAt(offset);
                }
                offset += Character.charCount(codepoint);
+            }
+            if (DEBUG) {
+                System.err.println("Removing control characters... done");
             }
             return newValue;
         }
@@ -162,6 +177,9 @@ public class QuickbaseTableDump {
         private void parseResults() {
             if (results != null) return;
             String s = new String(responseString);
+            if (DEBUG) {
+                System.err.println("Parsing results...");
+            }
             
             results = new HashMap<String,String>();
             NodeList qdbapiNodeList = xml().getElementsByTagName("qdbapi");
@@ -189,10 +207,17 @@ public class QuickbaseTableDump {
                     }
                 }
             }
+            
+            if (DEBUG) {
+                System.err.println("Parsing results... done");
+            }
         }
         
         public Document xml() {
             if (xml != null) return xml;
+            if (DEBUG) {
+                System.err.println("Parsing xml...");
+            }
             
             try {
                 DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
@@ -205,6 +230,10 @@ public class QuickbaseTableDump {
                 System.exit(1);
             }
             
+            if (DEBUG) {
+                System.err.println("Parsing xml... done");
+            }
+            
             return xml;
         }
         
@@ -214,6 +243,10 @@ public class QuickbaseTableDump {
         }
         
         public Map<String,Map<String,String>> getFields() {
+            if (DEBUG) {
+                System.err.println("Getting fields...");
+            }
+            
             Map<String,Map<String,String>> fields = new HashMap<String,Map<String,String>>();
             NodeList fieldElements = xml().getElementsByTagName("field");
             for (int i = 0; i < fieldElements.getLength(); i++) {
@@ -252,6 +285,11 @@ public class QuickbaseTableDump {
                 
                 fields.put(fieldElement.getAttribute("id"), fieldValues);
             }
+            
+            if (DEBUG) {
+                System.err.println("Getting fields... done");
+            }
+            
             return fields;
         }
         
@@ -266,6 +304,10 @@ public class QuickbaseTableDump {
         }
 
         public Map<String,Map<String,String>> getRecords() {
+            if (DEBUG) {
+                System.err.println("Getting records...");
+            }
+            
             Map<String,Map<String,String>> records = new HashMap<String,Map<String,String>>();
             NodeList recordElements = xml().getElementsByTagName("record");
             for (int i = 0; i < recordElements.getLength(); i++) {
@@ -308,6 +350,11 @@ public class QuickbaseTableDump {
                 
                 records.put(recordElement.getAttribute("rid"), recordValues);
             }
+            
+            if (DEBUG) {
+                System.err.println("Getting records... done");
+            }
+            
             return records;
         }
     }
@@ -367,7 +414,7 @@ public class QuickbaseTableDump {
             assert(startRecordId != null);
         }
         if (DEBUG) {
-        	System.err.println("startRecordId: "+startRecordId);
+            System.err.println("startRecordId: "+startRecordId);
         }
         
         // find highest record id
@@ -386,7 +433,7 @@ public class QuickbaseTableDump {
             assert(endRecordId != null);
         }
         if (DEBUG) {
-        	System.err.println("endRecordId: "+endRecordId);
+            System.err.println("endRecordId: "+endRecordId);
         }
         
         for (int page = 0; startRecordId + page * MAX_ROWS_PER_REQUEST <= endRecordId; page++) {
@@ -401,7 +448,7 @@ public class QuickbaseTableDump {
             request.setParameter("fmt", "structured");
             response = request.send();
             if (DEBUG) {
-            	System.err.println("found "+response.getRecords().size()+" records in record id range ["+from+","+to+")");
+                System.err.println("found "+response.getRecords().size()+" records in record id range ["+from+","+to+")");
             }
             
             if ("".equals(combinedResponse)) {
@@ -414,8 +461,8 @@ public class QuickbaseTableDump {
         }
         
         if (DEBUG) {
-        	response = new QuickbaseResponse(combinedResponse);
-        	System.err.println("Found a total of "+response.getRecords().size()+" records");
+            response = new QuickbaseResponse(combinedResponse);
+            System.err.println("Found a total of "+response.getRecords().size()+" records");
         }
         
         System.out.println(combinedResponse);
