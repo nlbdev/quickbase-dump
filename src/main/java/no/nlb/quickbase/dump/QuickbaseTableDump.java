@@ -138,26 +138,16 @@ public class QuickbaseTableDump {
             if (DEBUG) {
                 System.err.println("Removing control characters...");
             }
-            String newValue = "";
-            final int length = value.length();
-            for (int offset = 0; offset < length; ) {
-               final int codepoint = value.codePointAt(offset);
-               if (codepoint <= 8 ||
-                   codepoint >= 14 && codepoint <= 31 ||
-                   codepoint >= 128 && codepoint <= 132 ||
-                   codepoint >= 134 && codepoint <= 159) {
-                   if (DEBUG) {
-                       System.err.println("removing codepoint: "+codepoint);
-                   }
-               } else {
-                   newValue += value.charAt(offset);
-               }
-               offset += Character.charCount(codepoint);
-            }
+            
+            value = value.codePoints()
+                         .filter(cp -> !(cp < 8 || cp >= 14 && cp <= 31 || cp >= 128 && cp <= 132 || cp >= 134 && cp <= 159))
+                         .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                         .toString();
+            
             if (DEBUG) {
                 System.err.println("Removing control characters... done");
             }
-            return newValue;
+            return value;
         }
         
         public void setParameter(String key, String value) {
@@ -458,7 +448,7 @@ public class QuickbaseTableDump {
             combinedResponse += response.responseString.replaceAll("(?s)^.*<records[^>]*>[^<]*", "").replaceAll("(?s)</records.*", "");
             long timeAfterRegex = new Date().getTime();
             if (DEBUG) {
-            	System.err.println("regex duration in ms: "+(timeAfterRegex-timeBeforeRegex));
+                System.err.println("regex duration in ms: "+(timeAfterRegex-timeBeforeRegex));
             }
         }
         if (!"".equals(combinedResponse)) {
