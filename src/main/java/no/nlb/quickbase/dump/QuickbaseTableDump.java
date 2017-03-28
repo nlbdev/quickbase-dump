@@ -34,6 +34,7 @@ public class QuickbaseTableDump {
     
     private static final int MAX_ROWS_PER_REQUEST = 100;
     private static final String ENCODING = "iso-8859-1";
+    private static final boolean DEBUG = !("".equals(System.getenv("QUICKBASE_DEBUG")) || System.getenv("QUICKBASE_DEBUG") == null);
     
     public static class QuickbaseClient {
         private HttpClient client;
@@ -133,7 +134,9 @@ public class QuickbaseTableDump {
                    codepoint >= 14 && codepoint <= 31 ||
                    codepoint >= 128 && codepoint <= 132 ||
                    codepoint >= 134 && codepoint <= 159) {
-                   //System.err.println("removing codepoint: "+codepoint);
+            	   if (DEBUG) {
+            		   System.err.println("removing codepoint: "+codepoint);
+            	   }
                } else {
                    newValue += value.charAt(offset);
                }
@@ -161,19 +164,30 @@ public class QuickbaseTableDump {
             String s = new String(responseString);
             
             results = new HashMap<String,String>();
-            while (s.length() > 0) {
-                s = s.replaceAll("(?s)^.*?<([a-z])", "$1");
-                String key = s.replaceAll("(?s)>.*", "").replaceAll("\\s","");
-                if ("qdbapi".equals(key)) continue;
-                if (key.contains("<")) {
-                    s = s.replaceAll("(?s)^.*?<[^>]*", "");
-                    continue;
+            NodeList qdbapiNodeList = xml().getElementsByTagName("qdbapi");
+            Element qdbapiElement = (Element)qdbapiNodeList.item(0);
+            NodeList resultNodes = qdbapiElement.getChildNodes();
+            for (int i = 0; i < resultNodes.getLength(); i++) { // iterate elements inside element
+                Node resultChildNode = resultNodes.item(i);
+                if (resultChildNode.getNodeType() == Node.ELEMENT_NODE) {
+                    String name = resultChildNode.getNodeName();
+                    String value = null;
+                    NodeList childNodes = resultChildNode.getChildNodes();
+                    for (int j = 0; j < childNodes.getLength(); j++) { // iterate nodes inside element to check for content
+                        Node childNode = childNodes.item(j);
+                        if (childNode.getNodeType() == Node.ELEMENT_NODE) {
+                            // ignore elements with complex content
+                            value = null;
+                            break;
+                        }
+                        if (childNode.getNodeType() == Node.TEXT_NODE) {
+                            value = childNode.getNodeValue();
+                        }
+                    }
+                    if (value != null) {
+                        results.put(name, value);
+                    }
                 }
-                if ("".equals(key)) break;
-                s = s.replaceAll("(?s)^[^>]*>", "");
-                String value = s.replaceAll("(?s)<.*","");
-                results.put(key, value);
-                s = s.replaceAll("(?s)^.*?</[^>]*>", "");
             }
         }
         
@@ -278,7 +292,6 @@ public class QuickbaseTableDump {
                             }
                             if (childNode.getNodeType() == Node.TEXT_NODE) {
                                 try {
-                                    //value = URLEncoder.encode(childNode.getNodeValue(), ENCODING);
                                     value = childNode.getNodeValue();
                                     
                                 } catch (DOMException e) {
@@ -353,7 +366,9 @@ public class QuickbaseTableDump {
             startRecordId = new Integer(recordId);
             assert(startRecordId != null);
         }
-        //System.err.println("startRecordId: "+startRecordId);
+        if (DEBUG) {
+        	System.err.println("startRecordId: "+startRecordId);
+        }
         
         // find highest record id
         request = client.newRequest("API_DoQuery");
@@ -370,7 +385,9 @@ public class QuickbaseTableDump {
             endRecordId = new Integer(recordId);
             assert(endRecordId != null);
         }
-        //System.err.println("endRecordId: "+endRecordId);
+        if (DEBUG) {
+        	System.err.println("endRecordId: "+endRecordId);
+        }
         
         for (int page = 0; startRecordId + page * MAX_ROWS_PER_REQUEST <= endRecordId; page++) {
             int from = startRecordId + page * MAX_ROWS_PER_REQUEST;
@@ -383,7 +400,9 @@ public class QuickbaseTableDump {
             request.setParameter("includeRids", "1");
             request.setParameter("fmt", "structured");
             response = request.send();
-            //System.err.println("found "+response.getRecords().size()+" records in record id range ["+from+","+to+")");
+            if (DEBUG) {
+            	System.err.println("found "+response.getRecords().size()+" records in record id range ["+from+","+to+")");
+            }
             
             if ("".equals(combinedResponse)) {
                 combinedResponse += response.responseString.replaceAll("(?s)(<records[^>]*>[^<]*).*", "$1");
@@ -394,8 +413,10 @@ public class QuickbaseTableDump {
             combinedResponse += response.responseString.replaceAll("(?s).*(</records)", "$1");
         }
         
-        //response = new QuickbaseResponse(combinedResponse);
-        //System.err.println("Found a total of "+response.getRecords().size()+" records");
+        if (DEBUG) {
+        	response = new QuickbaseResponse(combinedResponse);
+        	System.err.println("Found a total of "+response.getRecords().size()+" records");
+        }
         
         System.out.println(combinedResponse);
     }
