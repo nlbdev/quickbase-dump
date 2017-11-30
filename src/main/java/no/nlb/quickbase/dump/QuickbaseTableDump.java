@@ -212,7 +212,7 @@ public class QuickbaseTableDump {
             try {
                 DocumentBuilderFactory documentBuilderFactory = DocumentBuilderFactory.newInstance();
                 DocumentBuilder documentBuilder = documentBuilderFactory.newDocumentBuilder();
-                InputStream stream = new ByteArrayInputStream(responseString.getBytes(ENCODING));
+                InputStream stream = new ByteArrayInputStream(responseString.getBytes("UTF-8"));
                 xml = documentBuilder.parse(stream);
                 
             } catch (ParserConfigurationException | SAXException | IOException e) {
@@ -443,7 +443,8 @@ public class QuickbaseTableDump {
             
             long timeBeforeRegex = new Date().getTime();
             if ("".equals(combinedResponse)) {
-                combinedResponse += response.responseString.replaceAll("(?s)(<records[^>]*>[^<]*).*$", "$1");
+                combinedResponse += response.responseString.replaceAll("(?s)(<records[^>]*>[^<]*).*$", "$1")
+                										   .replaceAll("<\\?xml[^>]*\\?>", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
             }
             combinedResponse += response.responseString.replaceAll("(?s)^.*<records[^>]*>[^<]*", "").replaceAll("(?s)</records.*", "");
             long timeAfterRegex = new Date().getTime();
