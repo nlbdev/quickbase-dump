@@ -33,7 +33,7 @@ import org.xml.sax.SAXException;
  */
 public class QuickbaseTableDump {
     
-    private static final int MAX_ROWS_PER_REQUEST = 100;
+    private static final int MAX_ROWS_PER_REQUEST = 10000;
     private static final String ENCODING = "iso-8859-1";
     private static final boolean DEBUG = !("".equals(System.getenv("QUICKBASE_DEBUG")) || System.getenv("QUICKBASE_DEBUG") == null);
     
