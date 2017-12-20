@@ -4,8 +4,10 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import javax.xml.parsers.DocumentBuilder;
@@ -349,6 +351,43 @@ public class QuickbaseTableDump {
         }
     }
     
+    public static List<QuickbaseResponse> getRange(QuickbaseClient client, String recordIdId, int from, int to) {
+    	QuickbaseRequest request = client.newRequest("API_DoQuery");
+        request.setParameter("query", "{'"+recordIdId+"'.GTE.'"+from+"'}AND{'"+recordIdId+"'.LT.'"+to+"'}");
+        request.setParameter("clist", "a");
+        request.setParameter("slist", recordIdId);
+        request.setParameter("includeRids", "1");
+        request.setParameter("fmt", "structured");
+        QuickbaseResponse response = request.send();
+        if (DEBUG) {
+            System.err.println("found "+response.getRecords().size()+" records in record id range ["+from+","+to+")");
+        }
+    	
+        if ("75".equals(response.get("errcode"))) {
+        	System.err.println(response.get("errtext"));
+        	System.err.println(response.get("errdetail"));
+        	int from1 = from;
+        	int to1 = from + (to - from) / 2;
+        	int from2 = to1 - 1;
+        	int to2 = to;
+        	if (from1 <= to1 && from2 <= to2) {
+        		System.err.println("Trying smaller id range");
+        		List<QuickbaseResponse> responses = getRange(client, recordIdId, from1, to1);
+        		responses.addAll(getRange(client, recordIdId, from2, to2));
+        		return responses;
+        		
+        	} else {
+        		System.err.println("Could not find smaller range to try! Unable to get range: ["+from+"-"+to+"]");
+        		return new ArrayList<QuickbaseResponse>();
+        	}
+        	
+        } else {
+        	List<QuickbaseResponse> responses = new ArrayList<QuickbaseResponse>();
+        	responses.add(response);
+        	return responses;
+        }
+    }
+    
     public static void main(String[] args) {
         String appToken = System.getenv("QUICKBASE_APP_TOKEN");
         String domain = System.getenv("QUICKBASE_DOMAIN");
@@ -430,28 +469,21 @@ public class QuickbaseTableDump {
             int from = startRecordId + page * MAX_ROWS_PER_REQUEST;
             int to = startRecordId + (page+1) * MAX_ROWS_PER_REQUEST;
             
-            request = client.newRequest("API_DoQuery");
-            request.setParameter("query", "{'"+recordIdId+"'.GTE.'"+from+"'}AND{'"+recordIdId+"'.LT.'"+to+"'}");
-            request.setParameter("clist", "a");
-            request.setParameter("slist", recordIdId);
-            request.setParameter("includeRids", "1");
-            request.setParameter("fmt", "structured");
-            response = request.send();
-            if (DEBUG) {
-                System.err.println("found "+response.getRecords().size()+" records in record id range ["+from+","+to+")");
-            }
+            List<QuickbaseResponse> responses = getRange(client, recordIdId, from, to);
             
-            long timeBeforeRegex = new Date().getTime();
-            if ("".equals(combinedResponse)) {
-                combinedResponse += response.responseString.replaceAll("(?s)(<records[^>]*>[^<]*).*$", "$1")
-                										   .replaceAll("<\\?xml[^>]*\\?>", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-            }
-            if (response.responseString.contains("<records")) {
-                combinedResponse += response.responseString.replaceAll("(?s)^.*<records[^>]*>[^<]*", "").replaceAll("(?s)</records.*", "");
-            }
-            long timeAfterRegex = new Date().getTime();
-            if (DEBUG) {
-                System.err.println("regex duration in ms: "+(timeAfterRegex-timeBeforeRegex));
+            for (QuickbaseResponse r : responses) {
+	            long timeBeforeRegex = new Date().getTime();
+	            if ("".equals(combinedResponse)) {
+	                combinedResponse += r.responseString.replaceAll("(?s)(<records[^>]*>[^<]*).*$", "$1")
+	                										   .replaceAll("<\\?xml[^>]*\\?>", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+	            }
+	            if (r.responseString.contains("<records")) {
+	                combinedResponse += r.responseString.replaceAll("(?s)^.*<records[^>]*>[^<]*", "").replaceAll("(?s)</records.*", "");
+	            }
+	            long timeAfterRegex = new Date().getTime();
+	            if (DEBUG) {
+	                System.err.println("regex duration in ms: "+(timeAfterRegex-timeBeforeRegex));
+	            }
             }
         }
         if (combinedResponse.contains("<records")) {
