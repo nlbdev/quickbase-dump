@@ -446,13 +446,15 @@ public class QuickbaseTableDump {
                 combinedResponse += response.responseString.replaceAll("(?s)(<records[^>]*>[^<]*).*$", "$1")
                 										   .replaceAll("<\\?xml[^>]*\\?>", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
             }
-            combinedResponse += response.responseString.replaceAll("(?s)^.*<records[^>]*>[^<]*", "").replaceAll("(?s)</records.*", "");
+            if (response.responseString.contains("<records")) {
+                combinedResponse += response.responseString.replaceAll("(?s)^.*<records[^>]*>[^<]*", "").replaceAll("(?s)</records.*", "");
+            }
             long timeAfterRegex = new Date().getTime();
             if (DEBUG) {
                 System.err.println("regex duration in ms: "+(timeAfterRegex-timeBeforeRegex));
             }
         }
-        if (!"".equals(combinedResponse)) {
+        if (combinedResponse.contains("<records")) {
             combinedResponse += response.responseString.replaceAll("(?s)^.*(</records)", "$1");
         }
         
