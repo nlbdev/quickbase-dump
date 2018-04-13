@@ -9,6 +9,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
@@ -157,7 +159,7 @@ public class QuickbaseTableDump {
         }
     }
     
-    private static class QuickbaseResponse {
+    static class QuickbaseResponse {
         public String responseString = null;
         private Document xml = null;
         private Map<String,String> results = null;
@@ -420,7 +422,6 @@ public class QuickbaseTableDump {
         QuickbaseRequest request;
         QuickbaseResponse response, schema;
         Map<String, Map<String, String>> records;
-        String combinedResponse = "";
         
         // find id of row containing record id
         request = client.newRequest("API_GetSchema");
@@ -465,30 +466,18 @@ public class QuickbaseTableDump {
             System.err.println("endRecordId: "+endRecordId);
         }
         
+        List<QuickbaseResponse> responses = new ArrayList<QuickbaseResponse>();
+        
         for (int page = 0; startRecordId + page * MAX_ROWS_PER_REQUEST <= endRecordId; page++) {
             int from = startRecordId + page * MAX_ROWS_PER_REQUEST;
             int to = startRecordId + (page+1) * MAX_ROWS_PER_REQUEST;
             
-            List<QuickbaseResponse> responses = getRange(client, recordIdId, from, to);
-            
-            for (QuickbaseResponse r : responses) {
-	            long timeBeforeRegex = new Date().getTime();
-	            if ("".equals(combinedResponse)) {
-	                combinedResponse += r.responseString.replaceAll("(?s)(<records[^>]*>[^<]*).*$", "$1")
-	                										   .replaceAll("<\\?xml[^>]*\\?>", "<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
-	            }
-	            if (r.responseString.contains("<records")) {
-	                combinedResponse += r.responseString.replaceAll("(?s)^.*<records[^>]*>[^<]*", "").replaceAll("(?s)</records.*", "");
-	            }
-	            long timeAfterRegex = new Date().getTime();
-	            if (DEBUG) {
-	                System.err.println("regex duration in ms: "+(timeAfterRegex-timeBeforeRegex));
-	            }
+            for (QuickbaseResponse r : getRange(client, recordIdId, from, to)) {
+            	responses.add(r);
             }
         }
-        if (combinedResponse.contains("<records")) {
-            combinedResponse += response.responseString.replaceAll("(?s)^.*(</records)", "$1");
-        }
+        
+        String combinedResponse = combineResponses(responses);
         
         if (DEBUG) {
             response = new QuickbaseResponse(combinedResponse);
@@ -497,4 +486,67 @@ public class QuickbaseTableDump {
         
         System.out.println(combinedResponse);
     }
+
+	public static String combineResponses(List<QuickbaseResponse> responses) {
+		String emptyResponse = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<qdbapi>";
+		
+		if (responses == null || responses.size() == 0) {
+			System.err.println("No responses to combine");
+			return emptyResponse;
+		}
+		
+		// XML declaration
+		String combinedResponse = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+		
+		// common head
+		String commonHeadRegex = "(?s)^.*(<qdbapi.*)<lusers.*$";
+		if (!responses.get(0).responseString.matches(commonHeadRegex)) {
+			System.err.println("Could not retrieve common head");
+			return emptyResponse;
+		}
+		combinedResponse += responses.get(0).responseString.replaceAll(commonHeadRegex, "$1");
+		
+		// users
+		combinedResponse += "<lusers>\n";
+		SortedMap<String,String> users = new TreeMap<String,String>();
+		for (QuickbaseResponse response : responses) {
+			String lusersRegex = "(?s)^.*<lusers[^>]*>(.*)</lusers.*$";
+			if (!response.responseString.matches(lusersRegex)) {
+				System.err.print("Response contains no users");
+				continue;
+			}
+			String responseLusers = response.responseString.replaceAll(lusersRegex, "$1");
+			for (String luser : responseLusers.split("(?s)<luser")) {
+				if (!luser.contains("luser")) {
+					continue;
+				}
+				String userIdRegex = "(?s)^.*id=\"([^\"]*)\".*$";
+				String userEmailRegex = "(?s)^.*>([^<]*)</luser.*$";
+				if (!luser.matches(userIdRegex)) {
+					System.err.println("Unable to parse user ID: " + luser.substring(0, Integer.min(100, luser.length())));
+					continue;
+				}
+				if (!luser.matches(userEmailRegex)) {
+					System.err.println("Unable to parse user e-mail: " + luser.substring(0, Integer.min(100, luser.length())));
+					continue;
+				}
+				String id = luser.replaceAll(userIdRegex, "$1");
+				String email = luser.replaceAll(userEmailRegex, "$1");
+				
+				users.put(id, email);
+			}
+		}
+		for (String userId : users.keySet()) {
+			combinedResponse += "<luser id=\"" + userId + "\">" + users.get(userId) + "</luser>\n";
+		}
+		combinedResponse += "</lusers>\n";
+		
+		combinedResponse += "      <records>";
+		for (QuickbaseResponse response : responses) {
+			combinedResponse += response.responseString.replaceAll("(?s)^.*<records[^>]*>(.*?)\\s*</records.*$", "$1");
+		}
+	    combinedResponse += "\n      </records>\n    </table>\n</qdbapi>\n";
+	    
+		return combinedResponse;
+	}
 }
