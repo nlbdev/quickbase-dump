@@ -93,7 +93,10 @@ public class QuickbaseTableDump {
             String postString = "<qdbapi>";
             for (String key : parameters.keySet()) {
                 postString += "<"+key+">"; // assume key is valid QName
-                postString += parameters.get(key).replaceAll("<", "&lt;").replaceAll("<", "&gt;").replaceAll("&", "&amp;");
+                if (parameters.get(key) == null) {
+                    System.out.println("parameter \"" + key + "\" not found in parameters!");
+                }
+                postString += parameters.get(key).replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("&", "&amp;");
                 postString += "</"+key+">";
             }
             postString += "</qdbapi>";
