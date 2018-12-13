@@ -91,10 +91,13 @@ public class QuickbaseTableDump {
         
         public QuickbaseResponse send() {
             String postString = "<qdbapi>";
+            if (DEBUG) {
+                System.err.println("Building <qdbapi> request...");
+            }
             for (String key : parameters.keySet()) {
                 postString += "<"+key+">"; // assume key is valid QName
-                if (parameters.get(key) == null) {
-                    System.out.println("parameter \"" + key + "\" not found in parameters!");
+                if (DEBUG) {
+                    System.err.println("- adding key: \"" + key + "\" (" + parameters.get(key) + ")");
                 }
                 postString += parameters.get(key).replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("&", "&amp;");
                 postString += "</"+key+">";
@@ -106,6 +109,9 @@ public class QuickbaseTableDump {
             } catch (UnsupportedEncodingException e) {
                 e.printStackTrace();
                 System.exit(1);
+            }
+            if (DEBUG) {
+                System.err.println("Done building <qdbapi> request");
             }
             
             HttpPost post = new HttpPost(url);
