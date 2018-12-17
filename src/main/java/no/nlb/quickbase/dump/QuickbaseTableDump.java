@@ -40,6 +40,7 @@ public class QuickbaseTableDump {
     private static final int MAX_ROWS_PER_REQUEST = 5000;
     private static final String ENCODING = "iso-8859-1";
     private static final boolean DEBUG = !("".equals(System.getenv("QUICKBASE_DEBUG")) || System.getenv("QUICKBASE_DEBUG") == null);
+    private static final boolean DEBUG_DEBUG = "2".equals(System.getenv("QUICKBASE_DEBUG"));
     
     public static class QuickbaseClient {
         private HttpClient client;
@@ -103,6 +104,10 @@ public class QuickbaseTableDump {
                 postString += "</"+key+">";
             }
             postString += "</qdbapi>";
+            if (DEBUG_DEBUG) {
+                System.err.println("Request string:");
+                System.err.println(postString);
+            }
             byte[] postBytes = null;
             try {
                 postBytes = postString.getBytes(ENCODING);
@@ -175,6 +180,10 @@ public class QuickbaseTableDump {
         
         public QuickbaseResponse(String responseString) {
             this.responseString = responseString;
+            if (DEBUG_DEBUG) {
+                System.err.println("Response string:");
+                System.err.println(responseString);
+            }
         }
         
         private void parseResults() {
@@ -363,6 +372,14 @@ public class QuickbaseTableDump {
     }
     
     public static List<QuickbaseResponse> getRange(QuickbaseClient client, String recordIdId, int from, int to) {
+    	if (DEBUG_DEBUG) {
+            System.err.println("API_DoQuery:");
+            System.err.println("set parameter \"query\" to \"{'"+recordIdId+"'.GTE.'"+from+"'}AND{'"+recordIdId+"'.LT.'"+to+"'}\"");
+            System.err.println("set parameter \"clist\" to \"a\"");
+            System.err.println("set parameter \"slist\" to \"" + recordIdId + "\"");
+            System.err.println("set parameter \"includeRids\" to \"1\"");
+            System.err.println("set parameter \"fmt\" to \"structured\"");
+        }
     	QuickbaseRequest request = client.newRequest("API_DoQuery");
         request.setParameter("query", "{'"+recordIdId+"'.GTE.'"+from+"'}AND{'"+recordIdId+"'.LT.'"+to+"'}");
         request.setParameter("clist", "a");
@@ -434,11 +451,23 @@ public class QuickbaseTableDump {
         
         // find id of row containing record id
         request = client.newRequest("API_GetSchema");
+    	if (DEBUG_DEBUG) {
+            System.err.println("API_GetSchema");
+        }
         schema = request.send();
         String recordIdId = schema.getRecordIdId();
         
         // find lowest record id
         request = client.newRequest("API_DoQuery");
+    	if (DEBUG_DEBUG) {
+            System.err.println("API_DoQuery:");
+            System.err.println("set parameter \"query\" to \"\"");
+    		System.err.println("set parameter \"clist\" to \"" + recordIdId + "\"");
+    		System.err.println("set parameter \"slist\" to \"" + recordIdId + "\"");
+    		System.err.println("set parameter \"options\" to \"sortorder-A.num-1\"");
+    		System.err.println("set parameter \"includeRids\" to \"1\"");
+    		System.err.println("set parameter \"fmt\" to \"structured\"");
+        }
         request.setParameter("query", "");
         request.setParameter("clist", recordIdId);
         request.setParameter("slist", recordIdId);
