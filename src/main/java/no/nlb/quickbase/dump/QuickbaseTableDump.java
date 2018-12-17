@@ -254,6 +254,33 @@ public class QuickbaseTableDump {
             return results.get(key);
         }
         
+		/**
+		 * If this is a response from API_GetSchema about the application, returns a map of all tables in the application.
+		 * 
+		 * @return A map of all the tables in the application. null if not a API_GetSchema response, or not an application schema.
+		 */
+		public Map<String, String> getTablesInApplicationSchema() {
+			if (!"API_GetSchema".equals(get("action"))) {
+				return null;
+			}
+			
+			NodeList chdbids = xml().getElementsByTagName("chdbids");
+			if (chdbids.getLength() > 0) {
+				chdbids = chdbids.item(0).getChildNodes();
+				Map<String,String> tables = new HashMap<String,String>();
+				for (int i = 0; i < chdbids.getLength(); i++) {
+					if (!(chdbids.item(i) instanceof Element)) {
+						continue;
+					}
+					Element chdbid = (Element)chdbids.item(i);
+					tables.put(chdbid.getAttribute("name"), chdbid.getTextContent());
+				}
+				return tables;
+			}
+			
+			return null;
+		}
+		
         public Map<String,Map<String,String>> getFields() {
             if (DEBUG) {
                 System.err.println("Getting fields...");
@@ -457,6 +484,16 @@ public class QuickbaseTableDump {
         schema = request.send();
         String recordIdId = schema.getRecordIdId();
         
+		Map<String, String> applicationTables = schema.getTablesInApplicationSchema();
+		if (applicationTables != null) {
+			System.err.println("The ID '" + table + "' refers to an application; not a table.");
+			System.err.println("The following tables are available in this application:");
+			for (String name : applicationTables.keySet()) {
+				System.err.println("- " + name + ": " + applicationTables.get(name));
+			}
+			System.exit(1);
+		}
+		
         // find lowest record id
         request = client.newRequest("API_DoQuery");
     	if (DEBUG_DEBUG) {
