@@ -403,7 +403,7 @@ public class QuickbaseTableDump {
         query += from == null ? "" : "{'"+recordIdId+"'.GTE.'"+from+"'}";
         query += from != null && to != null ? "AND" : "";
         query += to == null ? "" : "{'"+recordIdId+"'.LT.'"+to+"'}";
-    	if (DEBUG_DEBUG) {
+        if (DEBUG_DEBUG) {
             System.err.println("API_DoQuery:");
             System.err.println("set parameter \"query\" to \"" + query + "\"");
             System.err.println("set parameter \"clist\" to \"a\"");
@@ -411,7 +411,7 @@ public class QuickbaseTableDump {
             System.err.println("set parameter \"includeRids\" to \"1\"");
             System.err.println("set parameter \"fmt\" to \"structured\"");
         }
-    	QuickbaseRequest request = client.newRequest("API_DoQuery");
+        QuickbaseRequest request = client.newRequest("API_DoQuery");
         request.setParameter("query", query);
         request.setParameter("clist", "a");
         request.setParameter("slist", recordIdId);
@@ -421,29 +421,29 @@ public class QuickbaseTableDump {
         if (DEBUG) {
             System.err.println("found "+response.getRecords().size()+" records in record id range ["+from+","+to+")");
         }
-    	
+        
         if ("75".equals(response.get("errcode"))) {
-        	System.err.println(response.get("errtext"));
-        	System.err.println(response.get("errdetail"));
-        	int from1 = from;
-        	int to1 = from + (to - from) / 2;
-        	int from2 = to1 - 1;
-        	int to2 = to;
-        	if (from1 <= to1 && from2 <= to2) {
-        		System.err.println("Trying smaller id range");
-        		List<QuickbaseResponse> responses = getRange(client, recordIdId, from1, to1);
-        		responses.addAll(getRange(client, recordIdId, from2, to2));
-        		return responses;
-        		
-        	} else {
-        		System.err.println("Could not find smaller range to try! Unable to get range: ["+from+"-"+to+"]");
-        		return new ArrayList<QuickbaseResponse>();
-        	}
-        	
+            System.err.println(response.get("errtext"));
+            System.err.println(response.get("errdetail"));
+            int from1 = from;
+            int to1 = from + (to - from) / 2;
+            int from2 = to1 - 1;
+            int to2 = to;
+            if (from1 <= to1 && from2 <= to2) {
+                System.err.println("Trying smaller id range");
+                List<QuickbaseResponse> responses = getRange(client, recordIdId, from1, to1);
+                responses.addAll(getRange(client, recordIdId, from2, to2));
+                return responses;
+                
+            } else {
+                System.err.println("Could not find smaller range to try! Unable to get range: ["+from+"-"+to+"]");
+                return new ArrayList<QuickbaseResponse>();
+            }
+            
         } else {
-        	List<QuickbaseResponse> responses = new ArrayList<QuickbaseResponse>();
-        	responses.add(response);
-        	return responses;
+            List<QuickbaseResponse> responses = new ArrayList<QuickbaseResponse>();
+            responses.add(response);
+            return responses;
         }
     }
     
@@ -482,7 +482,7 @@ public class QuickbaseTableDump {
         
         // find id of row containing record id
         request = client.newRequest("API_GetSchema");
-    	if (DEBUG_DEBUG) {
+        if (DEBUG_DEBUG) {
             System.err.println("API_GetSchema");
         }
         schema = request.send();
@@ -500,14 +500,14 @@ public class QuickbaseTableDump {
 		
         // find lowest record id
         request = client.newRequest("API_DoQuery");
-    	if (DEBUG_DEBUG) {
+        if (DEBUG_DEBUG) {
             System.err.println("API_DoQuery:");
             System.err.println("set parameter \"query\" to \"\"");
-    		System.err.println("set parameter \"clist\" to \"" + recordIdId + "\"");
-    		System.err.println("set parameter \"slist\" to \"" + recordIdId + "\"");
-    		System.err.println("set parameter \"options\" to \"sortorder-A.num-1\"");
-    		System.err.println("set parameter \"includeRids\" to \"1\"");
-    		System.err.println("set parameter \"fmt\" to \"structured\"");
+            System.err.println("set parameter \"clist\" to \"" + recordIdId + "\"");
+            System.err.println("set parameter \"slist\" to \"" + recordIdId + "\"");
+            System.err.println("set parameter \"options\" to \"sortorder-A.num-1\"");
+            System.err.println("set parameter \"includeRids\" to \"1\"");
+            System.err.println("set parameter \"fmt\" to \"structured\"");
         }
         request.setParameter("query", "");
         request.setParameter("clist", recordIdId);
@@ -559,7 +559,7 @@ public class QuickbaseTableDump {
                 int to = startRecordId + (page+1) * MAX_ROWS_PER_REQUEST;
                 
                 for (QuickbaseResponse r : getRange(client, recordIdId, from, to)) {
-                	responses.add(r);
+                    responses.add(r);
                 }
             }
         }
@@ -575,7 +575,7 @@ public class QuickbaseTableDump {
     }
 
 	public static String combineResponses(List<QuickbaseResponse> responses) {
-		String emptyResponse = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<qdbapi>";
+		String emptyResponse = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<qdbapi/>";
 		
 		if (responses == null || responses.size() == 0) {
 			System.err.println("No responses to combine");
@@ -585,50 +585,53 @@ public class QuickbaseTableDump {
 		// XML declaration
 		String combinedResponse = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
 		
-		// common head
-		String commonHeadRegex = "(?s)^.*(<qdbapi.*)<lusers.*$";
-		if (!responses.get(0).responseString.matches(commonHeadRegex)) {
-			System.err.println("Could not retrieve common head");
-			return emptyResponse;
-		}
-		combinedResponse += responses.get(0).responseString.replaceAll(commonHeadRegex, "$1");
+        String commonHeadRegex = "(?s)^.*(<qdbapi.*)<lusers.*$";
+        String commonHeadRegexWithoutUsers = "(?s)^.*(<qdbapi.*)<records.*$";
+        if (responses.get(0).responseString.matches(commonHeadRegex)) {
+	        // common head with users
+            combinedResponse += responses.get(0).responseString.replaceAll(commonHeadRegex, "$1");
+            
+            // users
+            combinedResponse += "<lusers>\n";
+            SortedMap<String,String> users = new TreeMap<String,String>();
+            for (QuickbaseResponse response : responses) {
+                String lusersRegex = "(?s)^.*<lusers[^>]*>(.*)</lusers.*$";
+                if (!response.responseString.matches(lusersRegex)) {
+                    System.err.print("Response contains no users");
+                    continue;
+                }
+                String responseLusers = response.responseString.replaceAll(lusersRegex, "$1");
+                for (String luser : responseLusers.split("(?s)<luser")) {
+                    if (!luser.contains("luser")) {
+                        continue;
+                    }
+                    String userIdRegex = "(?s)^.*id=\"([^\"]*)\".*$";
+                    String userEmailRegex = "(?s)^.*>([^<]*)</luser.*$";
+                    if (!luser.matches(userIdRegex)) {
+                        System.err.println("Unable to parse user ID: " + luser.substring(0, Integer.min(100, luser.length())));
+                        continue;
+                    }
+                    if (!luser.matches(userEmailRegex)) {
+                        System.err.println("Unable to parse user e-mail: " + luser.substring(0, Integer.min(100, luser.length())));
+                        continue;
+                    }
+                    String id = luser.replaceAll(userIdRegex, "$1");
+                    String email = luser.replaceAll(userEmailRegex, "$1");
+                    
+                    users.put(id, email);
+                }
+            }
+            for (String userId : users.keySet()) {
+                combinedResponse += "<luser id=\"" + userId + "\">" + users.get(userId) + "</luser>\n";
+            }
+            combinedResponse += "</lusers>\n      ";
+        
+        } else if (responses.get(0).responseString.matches(commonHeadRegexWithoutUsers)) {
+            // common head without users
+            combinedResponse += responses.get(0).responseString.replaceAll(commonHeadRegexWithoutUsers, "$1");
+        }
 		
-		// users
-		combinedResponse += "<lusers>\n";
-		SortedMap<String,String> users = new TreeMap<String,String>();
-		for (QuickbaseResponse response : responses) {
-			String lusersRegex = "(?s)^.*<lusers[^>]*>(.*)</lusers.*$";
-			if (!response.responseString.matches(lusersRegex)) {
-				System.err.print("Response contains no users");
-				continue;
-			}
-			String responseLusers = response.responseString.replaceAll(lusersRegex, "$1");
-			for (String luser : responseLusers.split("(?s)<luser")) {
-				if (!luser.contains("luser")) {
-					continue;
-				}
-				String userIdRegex = "(?s)^.*id=\"([^\"]*)\".*$";
-				String userEmailRegex = "(?s)^.*>([^<]*)</luser.*$";
-				if (!luser.matches(userIdRegex)) {
-					System.err.println("Unable to parse user ID: " + luser.substring(0, Integer.min(100, luser.length())));
-					continue;
-				}
-				if (!luser.matches(userEmailRegex)) {
-					System.err.println("Unable to parse user e-mail: " + luser.substring(0, Integer.min(100, luser.length())));
-					continue;
-				}
-				String id = luser.replaceAll(userIdRegex, "$1");
-				String email = luser.replaceAll(userEmailRegex, "$1");
-				
-				users.put(id, email);
-			}
-		}
-		for (String userId : users.keySet()) {
-			combinedResponse += "<luser id=\"" + userId + "\">" + users.get(userId) + "</luser>\n";
-		}
-		combinedResponse += "</lusers>\n";
-		
-		combinedResponse += "      <records>";
+		combinedResponse += "<records>";
 		for (QuickbaseResponse response : responses) {
 			combinedResponse += response.responseString.replaceAll("(?s)^.*<records[^>]*>(.*?)\\s*</records.*$", "$1");
 		}
