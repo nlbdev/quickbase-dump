@@ -398,17 +398,21 @@ public class QuickbaseTableDump {
         }
     }
     
-    public static List<QuickbaseResponse> getRange(QuickbaseClient client, String recordIdId, int from, int to) {
+    public static List<QuickbaseResponse> getRange(QuickbaseClient client, String recordIdId, Integer from, Integer to) {
+        String query = "";
+        query += from == null ? "" : "{'"+recordIdId+"'.GTE.'"+from+"'}";
+        query += from != null && to != null ? "AND" : "";
+        query += to == null ? "" : "{'"+recordIdId+"'.LT.'"+to+"'}";
     	if (DEBUG_DEBUG) {
             System.err.println("API_DoQuery:");
-            System.err.println("set parameter \"query\" to \"{'"+recordIdId+"'.GTE.'"+from+"'}AND{'"+recordIdId+"'.LT.'"+to+"'}\"");
+            System.err.println("set parameter \"query\" to \"" + query + "\"");
             System.err.println("set parameter \"clist\" to \"a\"");
             System.err.println("set parameter \"slist\" to \"" + recordIdId + "\"");
             System.err.println("set parameter \"includeRids\" to \"1\"");
             System.err.println("set parameter \"fmt\" to \"structured\"");
         }
     	QuickbaseRequest request = client.newRequest("API_DoQuery");
-        request.setParameter("query", "{'"+recordIdId+"'.GTE.'"+from+"'}AND{'"+recordIdId+"'.LT.'"+to+"'}");
+        request.setParameter("query", query);
         request.setParameter("clist", "a");
         request.setParameter("slist", recordIdId);
         request.setParameter("includeRids", "1");
@@ -516,7 +520,6 @@ public class QuickbaseTableDump {
         Integer startRecordId = null;
         for (String recordId : records.keySet()) {
             startRecordId = new Integer(recordId);
-            assert(startRecordId != null);
         }
         if (DEBUG) {
             System.err.println("startRecordId: "+startRecordId);
@@ -543,12 +546,21 @@ public class QuickbaseTableDump {
         
         List<QuickbaseResponse> responses = new ArrayList<QuickbaseResponse>();
         
-        for (int page = 0; startRecordId + page * MAX_ROWS_PER_REQUEST <= endRecordId; page++) {
-            int from = startRecordId + page * MAX_ROWS_PER_REQUEST;
-            int to = startRecordId + (page+1) * MAX_ROWS_PER_REQUEST;
+        if (records.size() == 0) {
+            System.err.println("The table is empty.");
             
-            for (QuickbaseResponse r : getRange(client, recordIdId, from, to)) {
-            	responses.add(r);
+            for (QuickbaseResponse r : getRange(client, recordIdId, null, null)) {
+                responses.add(r);
+            }
+        
+        } else {
+            for (int page = 0; startRecordId + page * MAX_ROWS_PER_REQUEST <= endRecordId; page++) {
+                int from = startRecordId + page * MAX_ROWS_PER_REQUEST;
+                int to = startRecordId + (page+1) * MAX_ROWS_PER_REQUEST;
+                
+                for (QuickbaseResponse r : getRange(client, recordIdId, from, to)) {
+                	responses.add(r);
+                }
             }
         }
         
