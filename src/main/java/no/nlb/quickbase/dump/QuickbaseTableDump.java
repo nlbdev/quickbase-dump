@@ -16,12 +16,14 @@ import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 
+import org.apache.http.HttpHost;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
 import org.apache.http.ParseException;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
@@ -120,6 +122,14 @@ public class QuickbaseTableDump {
             }
             
             HttpPost post = new HttpPost(url);
+            
+            HttpHost proxy = parseProxy(System.getenv("http_proxy"));
+            RequestConfig.Builder configBuilder = RequestConfig.custom();
+            if (proxy != null) configBuilder.setProxy(proxy);
+            RequestConfig config = configBuilder.build();
+            if ( QuickbaseTableDump.DEBUG ) System.err.println("config is " + config.toString());
+            post.setConfig(config);
+            
             post.setHeader("QUICKBASE-ACTION", action);
             post.setHeader(HttpHeaders.CONTENT_TYPE, "application/xml");
             HttpEntity postEntity = new ByteArrayEntity(postBytes);
@@ -170,6 +180,31 @@ public class QuickbaseTableDump {
         
         public void setParameter(String key, String value) {
             parameters.put(key, value);
+        }
+        
+        private HttpHost parseProxy(String proxyServer) {
+            HttpHost proxyHost = null;
+            if (proxyServer != null) {
+                String proxyHostStr = proxyServer;
+                int slashIdx = proxyHostStr.lastIndexOf('/');
+                if (slashIdx != -1) {
+                    proxyHostStr = proxyHostStr.substring(slashIdx + 1);
+                }
+                int colonIdx = proxyHostStr.indexOf(':');
+                if (colonIdx != -1) {
+                    String proxyPortStr = proxyHostStr.substring(colonIdx + 1);
+                    proxyHostStr = proxyHostStr.substring(0, colonIdx);
+                    if (proxyPortStr != null && proxyPortStr.length() > 0 && proxyPortStr.matches("[0-9]+")) {
+                        int proxyPort = Integer.parseInt(proxyPortStr);
+                        proxyHost = new HttpHost(proxyHostStr, proxyPort);
+                    } else {
+                        proxyHost = new HttpHost(proxyHostStr, 80/*default port*/);
+                    }
+                } else {
+                    proxyHost = new HttpHost(proxyHostStr);
+                }
+            }
+            return proxyHost;
         }
     }
     
